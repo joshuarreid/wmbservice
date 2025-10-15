@@ -3,20 +3,20 @@ FROM maven:3.9.6-eclipse-temurin-17 AS build
 
 WORKDIR /app
 
-# Copy pom and source code
+# Copy pom.xml and source code
 COPY pom.xml .
 COPY src ./src
 
-# Build the application
+# Build the application; produces target/wmbservice-0.0.1-SNAPSHOT.jar
 RUN mvn clean package -DskipTests
 
 # === Runtime Stage ===
-FROM openjdk:17-jdk-slim
+FROM eclipse-temurin:17-jdk-jammy
 
 WORKDIR /app
 
-# Copy the jar from the build stage
-COPY --from=build /app/target/whats-my-budget-service-0.0.1-SNAPSHOT.jar app.jar
+# Copy the JAR from the build stage
+COPY --from=build /app/target/wmbservice-0.0.1-SNAPSHOT.jar app.jar
 
 # Run the app
 ENTRYPOINT ["java", "-jar", "app.jar"]
