@@ -32,7 +32,7 @@ public class BudgetTransactionController {
      * @param transactionId X-Transaction-ID header for traceability.
      * @return ResponseEntity with created transaction or error.
      */
-    @PostMapping("/")
+    @PostMapping
     public ResponseEntity<?> createTransaction(
             @Valid @RequestBody BudgetTransaction transaction,
             @RequestHeader(value = "X-Transaction-ID", required = false) String transactionId) {
@@ -67,7 +67,7 @@ public class BudgetTransactionController {
      * @param transactionId X-Transaction-ID header.
      * @return List of BudgetTransaction.
      */
-    @GetMapping("/")
+    @GetMapping
     public ResponseEntity<?> getTransactions(
             @RequestParam(value = "statementPeriod", required = false) String statementPeriod,
             @RequestParam(value = "account", required = false) String account,
