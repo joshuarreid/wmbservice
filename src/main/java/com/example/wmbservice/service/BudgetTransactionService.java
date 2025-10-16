@@ -13,6 +13,7 @@ import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
+import java.time.format.DateTimeFormatter;
 import java.util.Formatter;
 import java.util.List;
 import java.util.Optional;
@@ -55,6 +56,7 @@ public class BudgetTransactionService {
     public BudgetTransaction createTransaction(BudgetTransaction transaction, String transactionId) {
         logger.info("createTransaction entered. transactionId={}, payload={}", transactionId, transaction);
 
+        transaction.setCreatedTime(LocalDateTime.now());
         transaction.setRowHash(generateRowHash(transaction));
         logger.debug("Generated rowHash for transaction. transactionId={}, rowHash={}", transactionId, transaction.getRowHash());
 
@@ -64,8 +66,6 @@ public class BudgetTransactionService {
             logger.warn("Duplicate transaction detected. transactionId={}, rowHash={}, statementPeriod={}", transactionId, transaction.getRowHash(), transaction.getStatementPeriod());
             throw new DuplicateTransactionException("Transaction already exists for this statement period.");
         }
-
-        transaction.setCreatedTime(LocalDateTime.now());
 
         try {
             BudgetTransaction saved = repository.save(transaction);
@@ -153,8 +153,8 @@ public class BudgetTransactionService {
         existing.setStatus(updated.getStatus());
         existing.setPaymentMethod(updated.getPaymentMethod());
         existing.setStatementPeriod(updated.getStatementPeriod());
+        existing.setCreatedTime(updated.getCreatedTime());
 
-        // Generate new rowHash for updated transaction
         String newRowHash = generateRowHash(existing);
         existing.setRowHash(newRowHash);
         logger.debug("Generated new rowHash for updated transaction. transactionId={}, rowHash={}", transactionId, newRowHash);
@@ -204,13 +204,13 @@ public class BudgetTransactionService {
     }
 
     /**
-     * Generate SHA-256 row hash for deduplication.
+     * Generate SHA-256 row hash for deduplication, now including createdTime.
      * @param tx BudgetTransaction to hash.
      * @return SHA-256 hash string.
      */
     public String generateRowHash(BudgetTransaction tx) {
-        logger.debug("generateRowHash entered for transaction: name={}, account={}, amount={}, category={}, criticality={}, transactionDate={}, paymentMethod={}, statementPeriod={}",
-                tx.getName(), tx.getAccount(), tx.getAmount(), tx.getCategory(), tx.getCriticality(), tx.getTransactionDate(), tx.getPaymentMethod(), tx.getStatementPeriod());
+        logger.debug("generateRowHash entered for transaction: name={}, account={}, amount={}, category={}, criticality={}, transactionDate={}, paymentMethod={}, statementPeriod={}, createdTime={}",
+                tx.getName(), tx.getAccount(), tx.getAmount(), tx.getCategory(), tx.getCriticality(), tx.getTransactionDate(), tx.getPaymentMethod(), tx.getStatementPeriod(), tx.getCreatedTime());
         try {
             MessageDigest md = MessageDigest.getInstance("SHA-256");
             String raw = String.join("|",
@@ -221,7 +221,9 @@ public class BudgetTransactionService {
                     safe(tx.getCriticality()),
                     safeDate(tx.getTransactionDate()),
                     safe(tx.getPaymentMethod()),
-                    safe(tx.getStatementPeriod()));
+                    safe(tx.getStatementPeriod()),
+                    safeDateTime(tx.getCreatedTime())
+            );
             byte[] hash = md.digest(raw.getBytes(StandardCharsets.UTF_8));
             try (Formatter formatter = new Formatter()) {
                 for (byte b : hash) {
@@ -241,5 +243,5 @@ public class BudgetTransactionService {
     private String safe(String val) { return val == null ? "" : val.trim().toLowerCase(); }
     private String safeAmount(BigDecimal val) { return val == null ? "" : val.setScale(2, BigDecimal.ROUND_HALF_UP).toString(); }
     private String safeDate(LocalDate val) { return val == null ? "" : val.toString(); }
-
+    private String safeDateTime(LocalDateTime val) { return val == null ? "" : val.format(DateTimeFormatter.ISO_LOCAL_DATE_TIME); }
 }
