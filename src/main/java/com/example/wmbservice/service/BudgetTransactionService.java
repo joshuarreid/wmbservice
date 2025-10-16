@@ -48,6 +48,7 @@ public class BudgetTransactionService {
 
     /**
      * Create a new BudgetTransaction, enforcing deduplication by row hash.
+     * Sets transactionDate to current date if not provided (for UI hand-adds).
      * @param transaction The transaction to create.
      * @param transactionId The propagated X-Transaction-ID for logging.
      * @return The created transaction.
@@ -55,6 +56,13 @@ public class BudgetTransactionService {
     @Transactional
     public BudgetTransaction createTransaction(BudgetTransaction transaction, String transactionId) {
         logger.info("createTransaction entered. transactionId={}, payload={}", transactionId, transaction);
+
+        // If transactionDate is null (hand-add), set to current date
+        if (transaction.getTransactionDate() == null) {
+            LocalDate now = LocalDate.now();
+            logger.info("transactionDate not provided, setting to current date: {}. transactionId={}", now, transactionId);
+            transaction.setTransactionDate(now);
+        }
 
         transaction.setCreatedTime(LocalDateTime.now());
         transaction.setRowHash(generateRowHash(transaction));
