@@ -7,8 +7,11 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.http.*;
 import org.springframework.web.bind.annotation.*;
+import org.springframework.web.multipart.MultipartFile;
 
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 
 /**
  * REST controller for CRUD operations on BudgetTransaction.
@@ -196,6 +199,42 @@ public class BudgetTransactionController {
             return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
                     .header("X-Transaction-ID", transactionId)
                     .body(new ErrorResponse(HttpStatus.INTERNAL_SERVER_ERROR.value(), "DELETE_ERROR", "Unexpected error", transactionId));
+        }
+    }
+
+    /**
+     * Uploads a CSV of transactions for bulk import with deduplication and validation.
+     * Accepts multipart form-data: file (CSV), statementPeriod (required), and X-Transaction-ID (header).
+     * Returns inserted count, duplicate count, and error details.
+     */
+    @PostMapping("/upload")
+    public ResponseEntity<?> uploadTransactions(
+            @RequestParam("file") MultipartFile file,
+            @RequestParam("statementPeriod") String statementPeriod,
+            @RequestHeader(value = "X-Transaction-ID", required = false) String transactionId) {
+
+        logger.info("uploadTransactions entered. transactionId={}, statementPeriod={}", transactionId, statementPeriod);
+
+        try {
+            BudgetTransactionService.BulkImportResult result = budgetTransactionService.bulkImportTransactions(
+                    file, statementPeriod, transactionId);
+
+            logger.info("uploadTransactions completed. transactionId={}, insertedCount={}, duplicateCount={}, errorCount={}",
+                    transactionId, result.getInsertedCount(), result.getDuplicateCount(), result.getErrors().size());
+
+            return ResponseEntity.ok()
+                    .header("X-Transaction-ID", transactionId)
+                    .body(result);
+        } catch (Exception e) {
+            logger.error("Error during uploadTransactions. transactionId={}, error={}", transactionId, e.getMessage(), e);
+            Map<String, Object> errorResponse = new HashMap<>();
+            errorResponse.put("status", HttpStatus.BAD_REQUEST.value());
+            errorResponse.put("error", "CSV_IMPORT_ERROR");
+            errorResponse.put("message", e.getMessage());
+            errorResponse.put("transactionId", transactionId);
+            return ResponseEntity.status(HttpStatus.BAD_REQUEST)
+                    .header("X-Transaction-ID", transactionId)
+                    .body(errorResponse);
         }
     }
 

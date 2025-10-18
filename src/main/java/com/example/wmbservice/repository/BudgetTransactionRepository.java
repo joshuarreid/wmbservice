@@ -37,5 +37,6 @@ public interface BudgetTransactionRepository extends JpaRepository<BudgetTransac
                                           @Param("category") String category,
                                           @Param("paymentMethod") String paymentMethod);
 
-    // You can add more queries with @Query or Spring Data method names as needed.
+
+
 }

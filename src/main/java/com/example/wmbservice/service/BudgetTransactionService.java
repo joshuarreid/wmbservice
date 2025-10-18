@@ -1,5 +1,5 @@
 package com.example.wmbservice.service;
-
+import com.example.wmbservice.util.BudgetTransactionCsvImporter;
 import com.example.wmbservice.model.BudgetTransaction;
 import com.example.wmbservice.repository.BudgetTransactionRepository;
 import jakarta.transaction.Transactional;
@@ -7,16 +7,14 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.stereotype.Service;
-
+import org.springframework.web.multipart.MultipartFile;
 import java.math.BigDecimal;
 import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
-import java.util.Formatter;
-import java.util.List;
-import java.util.Optional;
+import java.util.*;
 
 /**
  * Service layer for BudgetTransaction CRUD with deduplication and robust logging.
@@ -27,9 +25,11 @@ public class BudgetTransactionService {
 
     private static final Logger logger = LoggerFactory.getLogger(BudgetTransactionService.class);
     private final BudgetTransactionRepository repository;
+    private final BudgetTransactionCsvImporter csvImporter;
 
-    public BudgetTransactionService(BudgetTransactionRepository repository) {
+    public BudgetTransactionService(BudgetTransactionRepository repository, BudgetTransactionCsvImporter csvImporter) {
         this.repository = repository;
+        this.csvImporter = csvImporter;
     }
 
     /**
@@ -212,13 +212,15 @@ public class BudgetTransactionService {
     }
 
     /**
-     * Generate SHA-256 row hash for deduplication, now including createdTime.
+     * Generate SHA-256 row hash for deduplication.
+     * Includes only business-key fields per design: name, account, amount, category, criticality, transactionDate, paymentMethod, statementPeriod.
+     * Excludes createdTime and other non-deterministic fields to ensure deduplication works as intended.
      * @param tx BudgetTransaction to hash.
      * @return SHA-256 hash string.
      */
     public String generateRowHash(BudgetTransaction tx) {
-        logger.debug("generateRowHash entered for transaction: name={}, account={}, amount={}, category={}, criticality={}, transactionDate={}, paymentMethod={}, statementPeriod={}, createdTime={}",
-                tx.getName(), tx.getAccount(), tx.getAmount(), tx.getCategory(), tx.getCriticality(), tx.getTransactionDate(), tx.getPaymentMethod(), tx.getStatementPeriod(), tx.getCreatedTime());
+        logger.debug("generateRowHash entered for transaction: name={}, account={}, amount={}, category={}, criticality={}, transactionDate={}, paymentMethod={}, statementPeriod={}",
+                tx.getName(), tx.getAccount(), tx.getAmount(), tx.getCategory(), tx.getCriticality(), tx.getTransactionDate(), tx.getPaymentMethod(), tx.getStatementPeriod());
         try {
             MessageDigest md = MessageDigest.getInstance("SHA-256");
             String raw = String.join("|",
@@ -229,8 +231,7 @@ public class BudgetTransactionService {
                     safe(tx.getCriticality()),
                     safeDate(tx.getTransactionDate()),
                     safe(tx.getPaymentMethod()),
-                    safe(tx.getStatementPeriod()),
-                    safeDateTime(tx.getCreatedTime())
+                    safe(tx.getStatementPeriod())
             );
             byte[] hash = md.digest(raw.getBytes(StandardCharsets.UTF_8));
             try (Formatter formatter = new Formatter()) {
@@ -245,6 +246,75 @@ public class BudgetTransactionService {
             logger.error("Error generating rowHash. error={}", e.getMessage(), e);
             throw new RuntimeException("Failed to generate row hash", e);
         }
+    }
+
+    /**
+     * Bulk imports transactions from a CSV file with deduplication and error reporting.
+     * Each row is mapped, validated, hashed, and checked for duplicates before insert.
+     * Returns summary of results.
+     */
+    @Transactional
+    public BulkImportResult bulkImportTransactions(MultipartFile file, String statementPeriod, String transactionId) {
+        logger.info("bulkImportTransactions entered. transactionId={}, statementPeriod={}", transactionId, statementPeriod);
+
+        int insertedCount = 0;
+        int duplicateCount = 0;
+        List<Map<String, Object>> errors = new ArrayList<>();
+
+        // Delegate robust CSV parsing/normalization to importer
+        List<BudgetTransaction> transactions = csvImporter.parseCsvToTransactions(file, transactionId, errors);
+
+        for (int i = 0; i < transactions.size(); i++) {
+            BudgetTransaction transaction = transactions.get(i);
+            if (transaction == null) continue;
+
+            transaction.setStatementPeriod(statementPeriod);
+            transaction.setRowHash(generateRowHash(transaction));
+            try {
+                Optional<BudgetTransaction> existing = repository.findByRowHashAndStatementPeriod(
+                        transaction.getRowHash(), statementPeriod);
+                if (existing.isPresent()) {
+                    duplicateCount++;
+                    logger.warn("Duplicate detected during bulk import. transactionId={}, rowHash={}, row={}",
+                            transactionId, transaction.getRowHash(), i + 2);
+                    continue;
+                }
+                repository.save(transaction);
+                insertedCount++;
+                logger.debug("Inserted transaction in bulk import. transactionId={}, rowHash={}, row={}",
+                        transactionId, transaction.getRowHash(), i + 2);
+            } catch (Exception e) {
+                logger.error("Error inserting transaction in bulk import. transactionId={}, row={}, error={}",
+                        transactionId, i + 2, e.getMessage(), e);
+                Map<String, Object> errorDetail = new HashMap<>();
+                errorDetail.put("row", i + 2);
+                errorDetail.put("message", e.getMessage());
+                errors.add(errorDetail);
+            }
+        }
+
+        logger.info("bulkImportTransactions completed. transactionId={}, insertedCount={}, duplicateCount={}, errorCount={}",
+                transactionId, insertedCount, duplicateCount, errors.size());
+        return new BulkImportResult(insertedCount, duplicateCount, errors);
+    }
+
+    /**
+     * Result object for bulk import summary.
+     */
+    public static class BulkImportResult {
+        private final int insertedCount;
+        private final int duplicateCount;
+        private final List<Map<String, Object>> errors;
+
+        public BulkImportResult(int insertedCount, int duplicateCount, List<Map<String, Object>> errors) {
+            this.insertedCount = insertedCount;
+            this.duplicateCount = duplicateCount;
+            this.errors = errors;
+        }
+
+        public int getInsertedCount() { return insertedCount; }
+        public int getDuplicateCount() { return duplicateCount; }
+        public List<Map<String, Object>> getErrors() { return errors; }
     }
 
     // Helper methods for safely formatting values
