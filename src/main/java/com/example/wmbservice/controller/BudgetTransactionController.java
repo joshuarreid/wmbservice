@@ -203,6 +203,34 @@ public class BudgetTransactionController {
     }
 
     /**
+     * Deletes all transactions.
+     * @param transactionId X-Transaction-ID header.
+     * @return Count of deleted transactions.
+     */
+    @DeleteMapping()
+    public ResponseEntity<?> deleteAllTransactions(
+            @RequestHeader(value = "X-Transaction-ID", required = false) String transactionId) {
+
+        logger.info("deleteAllTransactions entered. transactionId={}", transactionId);
+
+        try {
+            long deletedCount = budgetTransactionService.deleteAllTransactions(transactionId);
+            logger.info("deleteAllTransactions successful. transactionId={}, deletedCount={}", transactionId, deletedCount);
+
+            Map<String, Object> body = Map.of("deletedCount", deletedCount);
+            return ResponseEntity.ok()
+                    .header("X-Transaction-ID", transactionId)
+                    .body(body);
+        } catch (Exception e) {
+            logger.error("Error deleting all transactions. transactionId={}, error={}", transactionId, e.getMessage(), e);
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
+                    .header("X-Transaction-ID", transactionId)
+                    .body(new ErrorResponse(HttpStatus.INTERNAL_SERVER_ERROR.value(), "DELETE_ALL_ERROR", "Unexpected error", transactionId));
+        }
+    }
+
+
+    /**
      * Uploads a CSV of transactions for bulk import with deduplication and validation.
      * Accepts multipart form-data: file (CSV), statementPeriod (required), and X-Transaction-ID (header).
      * Returns inserted count, duplicate count, and error details.

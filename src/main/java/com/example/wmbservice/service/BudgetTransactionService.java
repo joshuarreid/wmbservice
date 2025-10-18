@@ -212,6 +212,28 @@ public class BudgetTransactionService {
     }
 
     /**
+     * Delete all transactions.
+     * @param transactionId X-Transaction-ID for logging.
+     * @return Number of transactions deleted.
+     */
+    public long deleteAllTransactions(String transactionId) {
+        logger.info("deleteAllTransactions entered. transactionId={}", transactionId);
+        long count = repository.count();
+        if (count == 0) {
+            logger.info("No transactions to delete. transactionId={}", transactionId);
+            return 0L;
+        }
+        try {
+            repository.deleteAll();
+            logger.info("All transactions deleted. transactionId={}, deletedCount={}", transactionId, count);
+            return count;
+        } catch (Exception e) {
+            logger.error("Error deleting all transactions. transactionId={}, error={}", transactionId, e.getMessage(), e);
+            throw e;
+        }
+    }
+
+    /**
      * Generate SHA-256 row hash for deduplication.
      * Includes only business-key fields per design: name, account, amount, category, criticality, transactionDate, paymentMethod, statementPeriod.
      * Excludes createdTime and other non-deterministic fields to ensure deduplication works as intended.
