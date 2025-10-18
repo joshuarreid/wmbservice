@@ -17,6 +17,7 @@ import java.util.Map;
  * REST controller for CRUD operations on BudgetTransaction.
  * Centralized logging and error handling, propagates X-Transaction-ID.
  */
+@CrossOrigin(origins = "http://localhost:3000", exposedHeaders = "X-Transaction-ID")
 @RestController
 @RequestMapping("/api/transactions")
 public class BudgetTransactionController {
