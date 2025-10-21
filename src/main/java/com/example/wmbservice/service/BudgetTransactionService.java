@@ -98,13 +98,13 @@ public class BudgetTransactionService {
      * @return List of BudgetTransaction matching filters.
      */
     @Transactional
-    public List<BudgetTransaction> getTransactions(String statementPeriod, String account, String category, String paymentMethod, String transactionId) {
-        logger.info("getTransactions entered. transactionId={}, filters: statementPeriod={}, account={}, category={}, paymentMethod={}",
-                transactionId, statementPeriod, account, category, paymentMethod);
+    public List<BudgetTransaction> getTransactions(String statementPeriod, String account, String category, String criticality, String paymentMethod, String transactionId) {
+        logger.info("getTransactions entered. transactionId={}, filters: statementPeriod={}, account={}, category={}, criticality= {}, paymentMethod={}",
+                transactionId, statementPeriod, account, category, criticality, paymentMethod);
 
         List<BudgetTransaction> results;
-        if (statementPeriod != null || account != null || category != null || paymentMethod != null) {
-            results = repository.findByFilters(statementPeriod, account, category, paymentMethod);
+        if (statementPeriod != null || account != null || category != null || criticality != null | paymentMethod != null) {
+            results = repository.findByFilters(statementPeriod, account, category, criticality, paymentMethod);
             logger.debug("Filtered transactions fetched. transactionId={}, count={}", transactionId, results.size());
         } else {
             results = repository.findAll();

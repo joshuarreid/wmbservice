@@ -87,7 +87,6 @@ public class BudgetTransaction {
      * Logs entity creation.
      */
     public BudgetTransaction() {
-        logger.info("BudgetTransaction instantiated via default constructor");
     }
 
     /**

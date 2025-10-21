@@ -27,14 +27,15 @@ public interface BudgetTransactionRepository extends JpaRepository<BudgetTransac
      * Filter transactions by optional fields. If a field is null, it is not used as a filter.
      * You can call this method from service with any combination of params.
      */
-    @Query("SELECT t FROM BudgetTransaction t WHERE " +
-            "(:statementPeriod IS NULL OR t.statementPeriod = :statementPeriod) AND " +
-            "(:account IS NULL OR t.account = :account) AND " +
-            "(:category IS NULL OR t.category = :category) AND " +
-            "(:paymentMethod IS NULL OR t.paymentMethod = :paymentMethod)")
+    @Query("SELECT t FROM BudgetTransaction t WHERE (:statementPeriod IS NULL OR t.statementPeriod = :statementPeriod) " +
+            "AND (:account IS NULL OR t.account = :account) " +
+            "AND (:category IS NULL OR t.category = :category) " +
+            "AND (:criticality IS NULL OR t.criticality = :criticality) " +
+            "AND (:paymentMethod IS NULL OR t.paymentMethod = :paymentMethod)")
     List<BudgetTransaction> findByFilters(@Param("statementPeriod") String statementPeriod,
                                           @Param("account") String account,
                                           @Param("category") String category,
+                                          @Param("criticality") String criticality,
                                           @Param("paymentMethod") String paymentMethod);
 
 

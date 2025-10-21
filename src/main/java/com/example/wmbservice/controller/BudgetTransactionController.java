@@ -76,6 +76,7 @@ public class BudgetTransactionController {
             @RequestParam(value = "statementPeriod", required = false) String statementPeriod,
             @RequestParam(value = "account", required = false) String account,
             @RequestParam(value = "category", required = false) String category,
+            @RequestParam(value = "criticality", required = false) String criticality,
             @RequestParam(value = "paymentMethod", required = false) String paymentMethod,
             @RequestHeader(value = "X-Transaction-ID", required = false) String transactionId) {
 
@@ -84,7 +85,7 @@ public class BudgetTransactionController {
 
         try {
             List<BudgetTransaction> transactions = budgetTransactionService.getTransactions(
-                    statementPeriod, account, category, paymentMethod, transactionId);
+                    statementPeriod, account, category, criticality, paymentMethod, transactionId);
             logger.info("getTransactions successful. transactionId={}, resultCount={}", transactionId, transactions.size());
             return ResponseEntity.ok()
                     .header("X-Transaction-ID", transactionId)
