@@ -31,7 +31,8 @@ public interface BudgetTransactionRepository extends JpaRepository<BudgetTransac
             "AND (:account IS NULL OR t.account = :account) " +
             "AND (:category IS NULL OR t.category = :category) " +
             "AND (:criticality IS NULL OR t.criticality = :criticality) " +
-            "AND (:paymentMethod IS NULL OR t.paymentMethod = :paymentMethod)")
+            "AND (:paymentMethod IS NULL OR t.paymentMethod = :paymentMethod) " +
+            "ORDER BY t.transactionDate DESC")
     List<BudgetTransaction> findByFilters(@Param("statementPeriod") String statementPeriod,
                                           @Param("account") String account,
                                           @Param("category") String category,
