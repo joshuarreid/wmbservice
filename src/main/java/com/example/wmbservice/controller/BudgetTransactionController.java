@@ -1,5 +1,6 @@
 package com.example.wmbservice.controller;
 
+import com.example.wmbservice.model.AccountBudgetTransactionList;
 import com.example.wmbservice.model.BudgetTransaction;
 import com.example.wmbservice.model.BudgetTransactionList;
 import com.example.wmbservice.service.BudgetTransactionService;
@@ -11,7 +12,6 @@ import org.springframework.web.bind.annotation.*;
 import org.springframework.web.multipart.MultipartFile;
 
 import java.util.HashMap;
-import java.util.List;
 import java.util.Map;
 
 /**
@@ -98,6 +98,45 @@ public class BudgetTransactionController {
                     .body(new ErrorResponse(HttpStatus.INTERNAL_SERVER_ERROR.value(), "LIST_ERROR", "Unexpected error", transactionId));
         }
     }
+
+
+    /**
+     * Get transactions for a specific account, including half of joint transactions.
+     * @param account Account name (required, passed as query param).
+     * @param statementPeriod Optional filter.
+     * @param category Optional filter.
+     * @param criticality Optional filter.
+     * @param paymentMethod Optional filter.
+     * @param transactionId X-Transaction-ID header.
+     * @return AccountBudgetTransactionList containing personal, joint, and total transactions.
+     */
+    @GetMapping("/account")
+    public ResponseEntity<?> getTransactionsForAccount(
+            @RequestParam("account") String account,
+            @RequestParam(value = "statementPeriod", required = false) String statementPeriod,
+            @RequestParam(value = "category", required = false) String category,
+            @RequestParam(value = "criticality", required = false) String criticality,
+            @RequestParam(value = "paymentMethod", required = false) String paymentMethod,
+            @RequestHeader(value = "X-Transaction-ID", required = false) String transactionId
+    ) {
+        logger.info("getTransactionsForAccount entered. transactionId={}, account={}", transactionId, account);
+
+        try {
+            AccountBudgetTransactionList result = budgetTransactionService.getAccountBudgetTransactionList(
+                    account, statementPeriod, category, criticality, paymentMethod, transactionId);
+            logger.info("getTransactionsForAccount successful. transactionId={}, account={}, personalCount={}, jointCount={}, total={}",
+                    transactionId, account, result.getPersonalTransactions().getCount(), result.getJointTransactions().getCount(), result.getTotal());
+            return ResponseEntity.ok()
+                    .header("X-Transaction-ID", transactionId)
+                    .body(result);
+        } catch (Exception e) {
+            logger.error("Error in getTransactionsForAccount. transactionId={}, error={}", transactionId, e.getMessage(), e);
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
+                    .header("X-Transaction-ID", transactionId)
+                    .body(new ErrorResponse(HttpStatus.INTERNAL_SERVER_ERROR.value(), "ACCOUNT_TX_ERROR", "Unexpected error", transactionId));
+        }
+    }
+
 
     /**
      * Get transaction by ID.
@@ -286,4 +325,3 @@ public class BudgetTransactionController {
         }
     }
 }
-

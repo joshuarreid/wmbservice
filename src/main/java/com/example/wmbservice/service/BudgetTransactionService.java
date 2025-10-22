@@ -1,4 +1,5 @@
 package com.example.wmbservice.service;
+import com.example.wmbservice.model.AccountBudgetTransactionList;
 import com.example.wmbservice.util.BudgetTransactionCsvImporter;
 import com.example.wmbservice.model.BudgetTransaction;
 import com.example.wmbservice.model.BudgetTransactionList;
@@ -115,6 +116,54 @@ public class BudgetTransactionService {
         }
         logger.info("getTransactions successful. transactionId={}, resultCount={}", transactionId, results.size());
         return new BudgetTransactionList(results);
+    }
+
+
+    /**
+     * Get transactions for a specific account, separated into personal and joint lists for AccountBudgetTransactionList.
+     */
+    public AccountBudgetTransactionList getAccountBudgetTransactionList(
+            String account,
+            String statementPeriod,
+            String category,
+            String criticality,
+            String paymentMethod,
+            String transactionId
+    ) {
+        logger.info("getAccountBudgetTransactionList entered. transactionId={}, account={}", transactionId, account);
+
+        List<BudgetTransaction> personalTxs = new ArrayList<>();
+        List<BudgetTransaction> jointTxs = new ArrayList<>();
+
+        if ("joint".equalsIgnoreCase(account)) {
+            // Only joint transactions
+            jointTxs = repository.findByFilters(statementPeriod, "joint", category, criticality, paymentMethod);
+        } else {
+            // Personal transactions
+            personalTxs = repository.findByFilters(statementPeriod, account, category, criticality, paymentMethod);
+
+            // Joint transactions, split for this account
+            List<BudgetTransaction> jointRaw = repository.findByFilters(statementPeriod, "joint", category, criticality, paymentMethod);
+            for (BudgetTransaction jt : jointRaw) {
+                BudgetTransaction split = new BudgetTransaction();
+                split.setName("[Split] " + jt.getName());
+                split.setAccount(account);
+                split.setAmount(jt.getAmount() != null ? jt.getAmount().divide(new java.math.BigDecimal("2.00"), 2, java.math.RoundingMode.HALF_UP) : null);
+                split.setCategory(jt.getCategory());
+                split.setCriticality(jt.getCriticality());
+                split.setTransactionDate(jt.getTransactionDate());
+                split.setStatus(jt.getStatus());
+                split.setPaymentMethod(jt.getPaymentMethod());
+                split.setStatementPeriod(jt.getStatementPeriod());
+                split.setCreatedTime(jt.getCreatedTime());
+                split.setRowHash(null);
+                jointTxs.add(split);
+            }
+        }
+
+        BudgetTransactionList personalList = new BudgetTransactionList(personalTxs);
+        BudgetTransactionList jointList = new BudgetTransactionList(jointTxs);
+        return new AccountBudgetTransactionList(personalList, jointList);
     }
 
     /**
