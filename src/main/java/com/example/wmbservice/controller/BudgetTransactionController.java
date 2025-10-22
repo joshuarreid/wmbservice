@@ -1,6 +1,7 @@
 package com.example.wmbservice.controller;
 
 import com.example.wmbservice.model.BudgetTransaction;
+import com.example.wmbservice.model.BudgetTransactionList;
 import com.example.wmbservice.service.BudgetTransactionService;
 import jakarta.validation.Valid;
 import org.slf4j.Logger;
@@ -69,7 +70,7 @@ public class BudgetTransactionController {
      * @param category Optional filter.
      * @param paymentMethod Optional filter.
      * @param transactionId X-Transaction-ID header.
-     * @return List of BudgetTransaction.
+     * @return BudgetTransactionList containing transactions, count and total.
      */
     @GetMapping
     public ResponseEntity<?> getTransactions(
@@ -84,12 +85,12 @@ public class BudgetTransactionController {
                 transactionId, statementPeriod, account, category, paymentMethod);
 
         try {
-            List<BudgetTransaction> transactions = budgetTransactionService.getTransactions(
+            BudgetTransactionList result = budgetTransactionService.getTransactions(
                     statementPeriod, account, category, criticality, paymentMethod, transactionId);
-            logger.info("getTransactions successful. transactionId={}, resultCount={}", transactionId, transactions.size());
+            logger.info("getTransactions successful. transactionId={}, resultCount={}, total={}", transactionId, result.getCount(), result.getTotal());
             return ResponseEntity.ok()
                     .header("X-Transaction-ID", transactionId)
-                    .body(transactions);
+                    .body(result);
         } catch (Exception e) {
             logger.error("Error fetching transactions. transactionId={}, error={}", transactionId, e.getMessage(), e);
             return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
@@ -285,3 +286,4 @@ public class BudgetTransactionController {
         }
     }
 }
+

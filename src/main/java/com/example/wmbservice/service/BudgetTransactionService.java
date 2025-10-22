@@ -1,6 +1,7 @@
 package com.example.wmbservice.service;
 import com.example.wmbservice.util.BudgetTransactionCsvImporter;
 import com.example.wmbservice.model.BudgetTransaction;
+import com.example.wmbservice.model.BudgetTransactionList;
 import com.example.wmbservice.repository.BudgetTransactionRepository;
 import jakarta.transaction.Transactional;
 import org.slf4j.Logger;
@@ -9,6 +10,7 @@ import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.stereotype.Service;
 import org.springframework.web.multipart.MultipartFile;
 import java.math.BigDecimal;
+import java.math.RoundingMode;
 import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
 import java.time.LocalDate;
@@ -95,15 +97,16 @@ public class BudgetTransactionService {
      * @param category Optional category filter.
      * @param paymentMethod Optional payment method filter.
      * @param transactionId X-Transaction-ID for logging.
-     * @return List of BudgetTransaction matching filters.
+     * @return BudgetTransactionList containing transactions, count and total.
      */
     @Transactional
-    public List<BudgetTransaction> getTransactions(String statementPeriod, String account, String category, String criticality, String paymentMethod, String transactionId) {
+    public BudgetTransactionList getTransactions(String statementPeriod, String account, String category, String criticality, String paymentMethod, String transactionId) {
         logger.info("getTransactions entered. transactionId={}, filters: statementPeriod={}, account={}, category={}, criticality= {}, paymentMethod={}",
                 transactionId, statementPeriod, account, category, criticality, paymentMethod);
 
         List<BudgetTransaction> results;
-        if (statementPeriod != null || account != null || category != null || criticality != null | paymentMethod != null) {
+        // Use logical OR (||) for correct boolean evaluation
+        if (statementPeriod != null || account != null || category != null || criticality != null || paymentMethod != null) {
             results = repository.findByFilters(statementPeriod, account, category, criticality, paymentMethod);
             logger.debug("Filtered transactions fetched. transactionId={}, count={}", transactionId, results.size());
         } else {
@@ -111,7 +114,7 @@ public class BudgetTransactionService {
             logger.debug("All transactions fetched. transactionId={}, count={}", transactionId, results.size());
         }
         logger.info("getTransactions successful. transactionId={}, resultCount={}", transactionId, results.size());
-        return results;
+        return new BudgetTransactionList(results);
     }
 
     /**
@@ -341,7 +344,7 @@ public class BudgetTransactionService {
 
     // Helper methods for safely formatting values
     private String safe(String val) { return val == null ? "" : val.trim().toLowerCase(); }
-    private String safeAmount(BigDecimal val) { return val == null ? "" : val.setScale(2, BigDecimal.ROUND_HALF_UP).toString(); }
+    private String safeAmount(BigDecimal val) { return val == null ? "" : val.setScale(2, RoundingMode.HALF_UP).toString(); }
     private String safeDate(LocalDate val) { return val == null ? "" : val.toString(); }
     private String safeDateTime(LocalDateTime val) { return val == null ? "" : val.format(DateTimeFormatter.ISO_LOCAL_DATE_TIME); }
 }
