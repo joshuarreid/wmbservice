@@ -79,7 +79,7 @@ public class BudgetTransaction {
     @Column(name = "payment_method", nullable = false)
     private String paymentMethod;
 
-
+    @NotBlank
     @Size(max = 32)
     @Column(name = "statement_period", nullable = false)
     private String statementPeriod;

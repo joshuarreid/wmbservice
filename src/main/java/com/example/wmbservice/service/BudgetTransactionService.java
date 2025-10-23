@@ -106,13 +106,12 @@ public class BudgetTransactionService {
                 transactionId, statementPeriod, account, category, criticality, paymentMethod);
 
         List<BudgetTransaction> results;
-        // Use logical OR (||) for correct boolean evaluation
-        if (statementPeriod != null || account != null || category != null || criticality != null || paymentMethod != null) {
-            results = repository.findByFilters(statementPeriod, account, category, criticality, paymentMethod);
-            logger.debug("Filtered transactions fetched. transactionId={}, count={}", transactionId, results.size());
-        } else {
+        if (statementPeriod == null || statementPeriod.isBlank()) {
             results = repository.findAll();
             logger.debug("All transactions fetched. transactionId={}, count={}", transactionId, results.size());
+        } else {
+            results = repository.findByFilters(statementPeriod, account, category, criticality, paymentMethod);
+            logger.debug("Filtered transactions fetched. transactionId={}, count={}", transactionId, results.size());
         }
         logger.info("getTransactions successful. transactionId={}, resultCount={}", transactionId, results.size());
         return new BudgetTransactionList(results);

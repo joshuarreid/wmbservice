@@ -24,8 +24,8 @@ public interface BudgetTransactionRepository extends JpaRepository<BudgetTransac
                                                                 @Param("statementPeriod") String statementPeriod);
 
     /**
-     * Filter transactions by optional fields. If a field is null, it is not used as a filter.
-     * You can call this method from service with any combination of params.
+     * Filter transactions by optional statementPeriod and other optional fields. If a field is null, it is not used as a filter.
+     * statementPeriod is now optional.
      */
     @Query("SELECT t FROM BudgetTransaction t WHERE (:statementPeriod IS NULL OR t.statementPeriod = :statementPeriod) " +
             "AND (:account IS NULL OR t.account = :account) " +
