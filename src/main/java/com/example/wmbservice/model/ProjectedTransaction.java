@@ -1,7 +1,10 @@
 package com.example.wmbservice.model;
 
 import jakarta.persistence.*;
-import jakarta.validation.constraints.*;
+import jakarta.validation.constraints.DecimalMin;
+import jakarta.validation.constraints.Digits;
+import jakarta.validation.constraints.NotBlank;
+import jakarta.validation.constraints.NotNull;
 import lombok.Getter;
 import lombok.Setter;
 import org.slf4j.Logger;
@@ -13,34 +16,29 @@ import java.time.LocalDateTime;
 import java.util.Objects;
 
 /**
- * Entity representing an actual budget transaction, mapped to the 'budget_transactions' table.
- * Includes rowHash for deduplication enforcement.
- *
- * Note: Uses Lombok @Getter and @Setter to reduce boilerplate for accessors.
+ * Entity representing a projected transaction used for forecasting.
+ * rowHash is transient (not persisted) to avoid requiring a row_hash column in the DB.
+ * Service layer computes rowHash for deduplication checks and logging.
  */
 @Getter
 @Setter
 @Entity
-@Table(
-        name = "budget_transactions",
+@Table(name = "projected_transactions",
         indexes = {
-                @Index(name = "idx_statement_period", columnList = "statement_period"),
-                @Index(name = "idx_account", columnList = "account"),
-                @Index(name = "idx_payment_method", columnList = "payment_method"),
-                @Index(name = "idx_category", columnList = "category"),
-                @Index(name = "uniq_transaction_hash", columnList = "row_hash, statement_period", unique = true)
+                @Index(name = "idx_statement_period_proj", columnList = "statement_period"),
+                @Index(name = "idx_account_proj", columnList = "account"),
+                @Index(name = "idx_payment_method_proj", columnList = "payment_method"),
+                @Index(name = "idx_category_proj", columnList = "category")
         }
 )
-public class BudgetTransaction {
-
-    private static final Logger logger = LoggerFactory.getLogger(BudgetTransaction.class);
+public class ProjectedTransaction {
+    private static final Logger logger = LoggerFactory.getLogger(ProjectedTransaction.class);
 
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
 
     @NotBlank
-    @Size(max = 255)
     @Column(nullable = false)
     private String name;
 
@@ -51,57 +49,55 @@ public class BudgetTransaction {
     private BigDecimal amount;
 
     @NotBlank
-    @Size(max = 128)
     @Column(nullable = false)
     private String category;
 
     @NotBlank
-    @Size(max = 32)
     @Column(nullable = false)
     private String criticality;
 
-    @NotNull
-    @Column(name = "transaction_date", nullable = false)
+    @Column(name = "transaction_date")
     private LocalDate transactionDate;
 
     @NotBlank
-    @Size(max = 32)
     @Column(nullable = false)
     private String account;
 
-    @Size(max = 64)
     private String status;
 
+    @NotNull
+    @Column(name = "created_time", nullable = false)
     private LocalDateTime createdTime;
 
-    @NotBlank
-    @Size(max = 64)
-    @Column(name = "payment_method", nullable = false)
+    @Column(name = "payment_method")
     private String paymentMethod;
 
-
-    @Size(max = 32)
+    @NotBlank
     @Column(name = "statement_period", nullable = false)
     private String statementPeriod;
 
-    @Size(max = 64)
-    @Column(name = "row_hash", length = 64, unique = true)
+    /**
+     * Deterministic row hash used for deduplication (SHA-256 hex).
+     * Marked transient: not persisted to DB to avoid requiring a row_hash column.
+     * Service will compute and use this field for logging and in-memory comparison.
+     */
+    @Transient
     private String rowHash;
 
     /**
      * Default constructor.
      */
-    public BudgetTransaction() {
-        logger.debug("BudgetTransaction default constructor called");
+    public ProjectedTransaction() {
+        logger.debug("ProjectedTransaction default constructor called");
     }
 
     /**
-     * All-args constructor for entity instantiation.
+     * All-args constructor helpful for tests and manual instantiation.
      */
-    public BudgetTransaction(String name, BigDecimal amount, String category, String criticality,
-                             LocalDate transactionDate, String account, String status, LocalDateTime createdTime,
-                             String paymentMethod, String statementPeriod, String rowHash) {
-        logger.info("BudgetTransaction instantiated with name={}, amount={}, statementPeriod={}", name, amount, statementPeriod);
+    public ProjectedTransaction(String name, BigDecimal amount, String category, String criticality,
+                                LocalDate transactionDate, String account, String status, LocalDateTime createdTime,
+                                String paymentMethod, String statementPeriod, String rowHash) {
+        logger.info("ProjectedTransaction instantiated with name={}, amount={}, statementPeriod={}", name, amount, statementPeriod);
         this.name = name;
         this.amount = amount;
         this.category = category;
@@ -117,23 +113,23 @@ public class BudgetTransaction {
 
     @Override
     public boolean equals(Object o) {
-        logger.debug("equals called");
+        logger.debug("equals called for ProjectedTransaction");
         if (this == o) return true;
-        if (!(o instanceof BudgetTransaction that)) return false;
+        if (!(o instanceof ProjectedTransaction that)) return false;
         return Objects.equals(rowHash, that.rowHash) &&
                 Objects.equals(statementPeriod, that.statementPeriod);
     }
 
     @Override
     public int hashCode() {
-        logger.debug("hashCode called");
+        logger.debug("hashCode called for ProjectedTransaction");
         return Objects.hash(rowHash, statementPeriod);
     }
 
     @Override
     public String toString() {
-        logger.debug("toString called");
-        return "BudgetTransaction{" +
+        logger.debug("toString called for ProjectedTransaction");
+        return "ProjectedTransaction{" +
                 "id=" + id +
                 ", name='" + name + '\'' +
                 ", amount=" + amount +
