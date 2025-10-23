@@ -2,7 +2,9 @@ package com.example.wmbservice.service;
 
 import com.example.wmbservice.model.ProjectedTransaction;
 import com.example.wmbservice.model.ProjectedTransactionList;
+import com.example.wmbservice.model.StatementPeriod;
 import com.example.wmbservice.repository.ProjectedTransactionRepository;
+import com.example.wmbservice.repository.StatementPeriodRepository;
 import jakarta.transaction.Transactional;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -17,18 +19,31 @@ import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
 import java.util.*;
+import java.util.regex.Pattern;
 
 /**
  * Service layer for ProjectedTransaction CRUD with deduplication (by business-key columns),
  * validation and robust logging. Does not require a persisted row_hash column.
+ *
+ * Additional behavior:
+ * - Validates statementPeriod format (ALLCAPSMONTHYYYY) when creating/updating projections.
+ * - Ensures a corresponding StatementPeriod row exists (creates it if missing).
  */
 @Service
 public class ProjectedTransactionService {
     private static final Logger logger = LoggerFactory.getLogger(ProjectedTransactionService.class);
     private final ProjectedTransactionRepository repository;
+    private final StatementPeriodRepository statementPeriodRepository;
 
-    public ProjectedTransactionService(ProjectedTransactionRepository repository) {
+    // Regex enforces FULL MONTH NAME followed by 4-digit year, e.g. OCTOBER2025
+    private static final Pattern PERIOD_NAME_PATTERN = Pattern.compile(
+            "^(JANUARY|FEBRUARY|MARCH|APRIL|MAY|JUNE|JULY|AUGUST|SEPTEMBER|OCTOBER|NOVEMBER|DECEMBER)\\d{4}$",
+            Pattern.CASE_INSENSITIVE
+    );
+
+    public ProjectedTransactionService(ProjectedTransactionRepository repository, StatementPeriodRepository statementPeriodRepository) {
         this.repository = repository;
+        this.statementPeriodRepository = statementPeriodRepository;
     }
 
     /**
@@ -47,6 +62,7 @@ public class ProjectedTransactionService {
 
     /**
      * Create a new ProjectedTransaction, enforcing deduplication by matching business-key columns.
+     * Validates and ensures the statementPeriod exists (creates it if missing).
      * If transactionDate is null (hand-add), sets it to today's date.
      *
      * @param transaction   The projected transaction to create.
@@ -61,6 +77,11 @@ public class ProjectedTransactionService {
             logger.warn("createProjectedTransaction received null payload. transactionId={}", transactionId);
             throw new IllegalArgumentException("Transaction payload must not be null");
         }
+
+        // Ensure statementPeriod is present and valid, and ensure it exists in DB
+        String rawPeriod = transaction.getStatementPeriod();
+        String normalizedPeriod = normalizeAndEnsureStatementPeriod(rawPeriod, transactionId);
+        transaction.setStatementPeriod(normalizedPeriod);
 
         if (transaction.getTransactionDate() == null) {
             LocalDate now = LocalDate.now();
@@ -159,6 +180,7 @@ public class ProjectedTransactionService {
 
     /**
      * Update an existing projected transaction.
+     * Validates and ensures updated statementPeriod exists when provided.
      *
      * @param id            Transaction ID to update.
      * @param updated       Updated projected transaction fields.
@@ -182,6 +204,12 @@ public class ProjectedTransactionService {
 
         ProjectedTransaction existing = existingOpt.get();
 
+        // If a new statementPeriod is provided, validate and ensure exists
+        if (updated.getStatementPeriod() != null && !updated.getStatementPeriod().isBlank()) {
+            String normalized = normalizeAndEnsureStatementPeriod(updated.getStatementPeriod(), transactionId);
+            existing.setStatementPeriod(normalized);
+        }
+
         // Copy updatable fields
         existing.setName(updated.getName());
         existing.setAmount(updated.getAmount());
@@ -191,7 +219,6 @@ public class ProjectedTransactionService {
         existing.setAccount(updated.getAccount());
         existing.setStatus(updated.getStatus());
         existing.setPaymentMethod(updated.getPaymentMethod());
-        existing.setStatementPeriod(updated.getStatementPeriod());
         existing.setCreatedTime(updated.getCreatedTime());
 
         // Generate transient row hash for logging
@@ -312,6 +339,52 @@ public class ProjectedTransactionService {
         } catch (Exception e) {
             logger.error("Error generating rowHash for projected transaction. error={}", e.getMessage(), e);
             throw new RuntimeException("Failed to generate row hash", e);
+        }
+    }
+
+    /**
+     * Normalize the incoming periodName (trim + uppercase), validate it against the required pattern
+     * and ensure a StatementPeriod row exists. If not present, creates a minimal StatementPeriod row.
+     *
+     * @param periodName raw incoming period name
+     * @param transactionId propagated transaction id for logging
+     * @return normalized period name (uppercase)
+     */
+    private String normalizeAndEnsureStatementPeriod(String periodName, String transactionId) {
+        logger.debug("normalizeAndEnsureStatementPeriod entered. transactionId={}, rawPeriodName={}", transactionId, periodName);
+
+        if (periodName == null) {
+            logger.warn("periodName is null. transactionId={}", transactionId);
+            throw new IllegalArgumentException("statementPeriod is required and must be in the form MONTHYYYY (e.g. OCTOBER2025)");
+        }
+
+        String normalized = periodName.trim().toUpperCase(Locale.ENGLISH);
+        logger.debug("periodName trimmed and upper-cased. transactionId={}, normalized={}", transactionId, normalized);
+
+        if (!PERIOD_NAME_PATTERN.matcher(normalized).matches()) {
+            logger.warn("periodName failed format validation. transactionId={}, normalized={}", transactionId, normalized);
+            throw new IllegalArgumentException("statementPeriod must be in the form MONTHYYYY (full month name + 4-digit year). Example: OCTOBER2025");
+        }
+
+        // Check repository for existence
+        Optional<StatementPeriod> existing = statementPeriodRepository.findByPeriodName(normalized);
+        if (existing.isPresent()) {
+            logger.debug("StatementPeriod exists. transactionId={}, periodName={}", transactionId, normalized);
+            return normalized;
+        }
+
+        // Create minimal StatementPeriod row
+        try {
+            StatementPeriod sp = new StatementPeriod();
+            sp.setPeriodName(normalized);
+            sp.setCreatedAt(LocalDateTime.now());
+            // startDate/endDate left null - business rules may compute these later
+            StatementPeriod saved = statementPeriodRepository.save(sp);
+            logger.info("Created missing StatementPeriod. transactionId={}, id={}, periodName={}", transactionId, saved.getId(), normalized);
+            return normalized;
+        } catch (Exception e) {
+            logger.error("Error creating StatementPeriod. transactionId={}, periodName={}, error={}", transactionId, normalized, e.getMessage(), e);
+            throw new RuntimeException("Failed to create or verify statement period", e);
         }
     }
 

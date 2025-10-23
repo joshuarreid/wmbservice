@@ -1,15 +1,18 @@
 package com.example.wmbservice.service;
 import com.example.wmbservice.model.AccountBudgetTransactionList;
-import com.example.wmbservice.util.BudgetTransactionCsvImporter;
 import com.example.wmbservice.model.BudgetTransaction;
 import com.example.wmbservice.model.BudgetTransactionList;
+import com.example.wmbservice.model.StatementPeriod;
 import com.example.wmbservice.repository.BudgetTransactionRepository;
+import com.example.wmbservice.repository.StatementPeriodRepository;
+import com.example.wmbservice.util.BudgetTransactionCsvImporter;
 import jakarta.transaction.Transactional;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.stereotype.Service;
 import org.springframework.web.multipart.MultipartFile;
+
 import java.math.BigDecimal;
 import java.math.RoundingMode;
 import java.nio.charset.StandardCharsets;
@@ -18,10 +21,15 @@ import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
 import java.util.*;
+import java.util.regex.Pattern;
 
 /**
  * Service layer for BudgetTransaction CRUD with deduplication and robust logging.
  * All methods propagate X-Transaction-ID for traceability and error handling.
+ *
+ * Additional behavior:
+ * - Validates statement period format (ALLCAPSMONTHYYYY) for new/updated transactions.
+ * - Ensures a corresponding StatementPeriod row exists in the statement_periods table, creating it when missing.
  */
 @Service
 public class BudgetTransactionService {
@@ -29,10 +37,20 @@ public class BudgetTransactionService {
     private static final Logger logger = LoggerFactory.getLogger(BudgetTransactionService.class);
     private final BudgetTransactionRepository repository;
     private final BudgetTransactionCsvImporter csvImporter;
+    private final StatementPeriodRepository statementPeriodRepository;
 
-    public BudgetTransactionService(BudgetTransactionRepository repository, BudgetTransactionCsvImporter csvImporter) {
+    // Regex enforces FULL MONTH NAME (uppercase or mixed-case normalized) followed by 4-digit year e.g. OCTOBER2025
+    private static final Pattern PERIOD_NAME_PATTERN = Pattern.compile(
+            "^(JANUARY|FEBRUARY|MARCH|APRIL|MAY|JUNE|JULY|AUGUST|SEPTEMBER|OCTOBER|NOVEMBER|DECEMBER)\\d{4}$",
+            Pattern.CASE_INSENSITIVE
+    );
+
+    public BudgetTransactionService(BudgetTransactionRepository repository,
+                                    BudgetTransactionCsvImporter csvImporter,
+                                    StatementPeriodRepository statementPeriodRepository) {
         this.repository = repository;
         this.csvImporter = csvImporter;
+        this.statementPeriodRepository = statementPeriodRepository;
     }
 
     /**
@@ -51,14 +69,26 @@ public class BudgetTransactionService {
 
     /**
      * Create a new BudgetTransaction, enforcing deduplication by row hash.
+     * Also validates the statementPeriod format and ensures a StatementPeriod row exists (creates it if missing).
      * Sets transactionDate to current date if not provided (for UI hand-adds).
-     * @param transaction The transaction to create.
+     *
+     * @param transaction   The transaction to create.
      * @param transactionId The propagated X-Transaction-ID for logging.
      * @return The created transaction.
      */
     @Transactional
     public BudgetTransaction createTransaction(BudgetTransaction transaction, String transactionId) {
         logger.info("createTransaction entered. transactionId={}, payload={}", transactionId, transaction);
+
+        if (transaction == null) {
+            logger.warn("createTransaction received null payload. transactionId={}", transactionId);
+            throw new IllegalArgumentException("Transaction payload is required");
+        }
+
+        // Ensure statementPeriod is present and valid, and ensure it exists in DB
+        String rawPeriod = transaction.getStatementPeriod();
+        String normalizedPeriod = normalizeAndEnsureStatementPeriod(rawPeriod, transactionId);
+        transaction.setStatementPeriod(normalizedPeriod);
 
         // If transactionDate is null (hand-add), set to current date
         if (transaction.getTransactionDate() == null) {
@@ -186,6 +216,8 @@ public class BudgetTransactionService {
 
     /**
      * Update an existing transaction.
+     * Validates and ensures updated statementPeriod exists when provided.
+     *
      * @param id Transaction ID.
      * @param updated Updated transaction fields.
      * @param transactionId X-Transaction-ID for logging.
@@ -202,6 +234,12 @@ public class BudgetTransactionService {
         }
         BudgetTransaction existing = existingOpt.get();
 
+        // If a new statementPeriod is provided, validate and ensure it exists
+        if (updated.getStatementPeriod() != null && !updated.getStatementPeriod().isBlank()) {
+            String normalized = normalizeAndEnsureStatementPeriod(updated.getStatementPeriod(), transactionId);
+            existing.setStatementPeriod(normalized);
+        }
+
         // Copy updatable fields
         existing.setName(updated.getName());
         existing.setAmount(updated.getAmount());
@@ -211,7 +249,6 @@ public class BudgetTransactionService {
         existing.setAccount(updated.getAccount());
         existing.setStatus(updated.getStatus());
         existing.setPaymentMethod(updated.getPaymentMethod());
-        existing.setStatementPeriod(updated.getStatementPeriod());
         existing.setCreatedTime(updated.getCreatedTime());
 
         String newRowHash = generateRowHash(existing);
@@ -324,11 +361,24 @@ public class BudgetTransactionService {
     /**
      * Bulk imports transactions from a CSV file with deduplication and error reporting.
      * Each row is mapped, validated, hashed, and checked for duplicates before insert.
-     * Returns summary of results.
+     * Ensures the provided statementPeriod is valid and present in the statement_periods table.
+     *
+     * @param file multipart CSV file
+     * @param statementPeriod statement period to attribute to rows
+     * @param transactionId propagated transaction id
+     * @return summary result
      */
     @Transactional
     public BulkImportResult bulkImportTransactions(MultipartFile file, String statementPeriod, String transactionId) {
         logger.info("bulkImportTransactions entered. transactionId={}, statementPeriod={}", transactionId, statementPeriod);
+
+        if (statementPeriod == null || statementPeriod.isBlank()) {
+            logger.warn("bulkImportTransactions missing statementPeriod. transactionId={}", transactionId);
+            throw new IllegalArgumentException("statementPeriod is required for bulk import");
+        }
+
+        // Normalize and ensure statementPeriod exists
+        String normalizedPeriod = normalizeAndEnsureStatementPeriod(statementPeriod, transactionId);
 
         int insertedCount = 0;
         int duplicateCount = 0;
@@ -341,11 +391,11 @@ public class BudgetTransactionService {
             BudgetTransaction transaction = transactions.get(i);
             if (transaction == null) continue;
 
-            transaction.setStatementPeriod(statementPeriod);
+            transaction.setStatementPeriod(normalizedPeriod);
             transaction.setRowHash(generateRowHash(transaction));
             try {
                 Optional<BudgetTransaction> existing = repository.findByRowHashAndStatementPeriod(
-                        transaction.getRowHash(), statementPeriod);
+                        transaction.getRowHash(), normalizedPeriod);
                 if (existing.isPresent()) {
                     duplicateCount++;
                     logger.warn("Duplicate detected during bulk import. transactionId={}, rowHash={}, row={}",
@@ -369,6 +419,52 @@ public class BudgetTransactionService {
         logger.info("bulkImportTransactions completed. transactionId={}, insertedCount={}, duplicateCount={}, errorCount={}",
                 transactionId, insertedCount, duplicateCount, errors.size());
         return new BulkImportResult(insertedCount, duplicateCount, errors);
+    }
+
+    /**
+     * Normalize the incoming periodName (trim + uppercase), validate it against the required pattern
+     * and ensure a StatementPeriod row exists. If not present, creates a minimal StatementPeriod row.
+     *
+     * @param periodName raw incoming period name
+     * @param transactionId propagated transaction id for logging
+     * @return normalized period name (uppercase)
+     */
+    private String normalizeAndEnsureStatementPeriod(String periodName, String transactionId) {
+        logger.debug("normalizeAndEnsureStatementPeriod entered. transactionId={}, rawPeriodName={}", transactionId, periodName);
+
+        if (periodName == null) {
+            logger.warn("periodName is null. transactionId={}", transactionId);
+            throw new IllegalArgumentException("statementPeriod is required and must be in the form MONTHYYYY (e.g. OCTOBER2025)");
+        }
+
+        String normalized = periodName.trim().toUpperCase(Locale.ENGLISH);
+        logger.debug("periodName trimmed and upper-cased. transactionId={}, normalized={}", transactionId, normalized);
+
+        if (!PERIOD_NAME_PATTERN.matcher(normalized).matches()) {
+            logger.warn("periodName failed format validation. transactionId={}, normalized={}", transactionId, normalized);
+            throw new IllegalArgumentException("statementPeriod must be in the form MONTHYYYY (full month name + 4-digit year). Example: OCTOBER2025");
+        }
+
+        // Check repository for existence
+        Optional<StatementPeriod> existing = statementPeriodRepository.findByPeriodName(normalized);
+        if (existing.isPresent()) {
+            logger.debug("StatementPeriod exists. transactionId={}, periodName={}", transactionId, normalized);
+            return normalized;
+        }
+
+        // Create minimal StatementPeriod row
+        try {
+            StatementPeriod sp = new StatementPeriod();
+            sp.setPeriodName(normalized);
+            sp.setCreatedAt(LocalDateTime.now());
+            // startDate/endDate left null - business rules may compute these later
+            StatementPeriod saved = statementPeriodRepository.save(sp);
+            logger.info("Created missing StatementPeriod. transactionId={}, id={}, periodName={}", transactionId, saved.getId(), normalized);
+            return normalized;
+        } catch (Exception e) {
+            logger.error("Error creating StatementPeriod. transactionId={}, periodName={}, error={}", transactionId, normalized, e.getMessage(), e);
+            throw new RuntimeException("Failed to create or verify statement period", e);
+        }
     }
 
     /**
