@@ -18,7 +18,7 @@ import java.util.Map;
  */
 @CrossOrigin(origins = "http://localhost:3000", exposedHeaders = "X-Transaction-ID")
 @RestController
-@RequestMapping("/api/statement-periods")
+@RequestMapping("/api/statements")
 public class StatementPeriodController {
 
     private static final Logger logger = LoggerFactory.getLogger(StatementPeriodController.class);
