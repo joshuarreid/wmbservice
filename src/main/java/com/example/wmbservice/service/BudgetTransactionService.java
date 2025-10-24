@@ -175,6 +175,7 @@ public class BudgetTransactionService {
             List<BudgetTransaction> jointRaw = repository.findByFilters(statementPeriod, "joint", category, criticality, paymentMethod);
             for (BudgetTransaction jt : jointRaw) {
                 BudgetTransaction split = new BudgetTransaction();
+                split.setId(jt.getId());
                 split.setName("[Split] " + jt.getName());
                 split.setAccount(account);
                 split.setAmount(jt.getAmount() != null ? jt.getAmount().divide(new java.math.BigDecimal("2.00"), 2, java.math.RoundingMode.HALF_UP) : null);
