@@ -22,7 +22,7 @@ public interface ProjectedTransactionRepository extends JpaRepository<ProjectedT
      * Results are ordered by createdTime descending.
      */
     @Query("SELECT t FROM ProjectedTransaction t WHERE (:statementPeriod IS NULL OR t.statementPeriod = :statementPeriod) " +
-            "AND (:account IS NULL OR t.account = :account) " +
+            "AND (:account IS NULL OR LOWER(t.account) = LOWER(:account)) " +
             "AND (:category IS NULL OR t.category = :category) " +
             "AND (:criticality IS NULL OR t.criticality = :criticality) " +
             "AND (:paymentMethod IS NULL OR t.paymentMethod = :paymentMethod) " +
@@ -40,7 +40,7 @@ public interface ProjectedTransactionRepository extends JpaRepository<ProjectedT
      * Note: transactionDate may be null. Query matches nulls explicitly.
      */
     @Query("SELECT t FROM ProjectedTransaction t WHERE " +
-            "t.name = :name AND t.account = :account AND t.amount = :amount AND t.category = :category " +
+            "t.name = :name AND LOWER(t.account) = LOWER(:account) AND t.amount = :amount AND t.category = :category " +
             "AND t.criticality = :criticality AND " +
             "((:transactionDate IS NULL AND t.transactionDate IS NULL) OR t.transactionDate = :transactionDate) " +
             "AND t.paymentMethod = :paymentMethod AND t.statementPeriod = :statementPeriod")

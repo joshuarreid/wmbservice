@@ -238,6 +238,33 @@ public class ProjectedTransactionController {
     }
 
     /**
+     * Get personal and joint projected transactions for an account, matching budget transaction flow.
+     */
+    @GetMapping("/account")
+    public ResponseEntity<?> getAccountProjectedTransactionList(
+            @RequestParam(value = "account") String account,
+            @RequestParam(value = "statementPeriod", required = false) String statementPeriod,
+            @RequestParam(value = "category", required = false) String category,
+            @RequestParam(value = "criticality", required = false) String criticality,
+            @RequestParam(value = "paymentMethod", required = false) String paymentMethod,
+            @RequestHeader(value = "X-Transaction-ID", required = false) String transactionId) {
+
+        logger.info("getAccountProjectedTransactionList entered. transactionId={}, account={}", transactionId, account);
+        try {
+            com.example.wmbservice.model.AccountProjectedTransactionList result = projectedTransactionService.getAccountProjectedTransactionList(
+                    account, statementPeriod, category, criticality, paymentMethod, transactionId);
+            return ResponseEntity.ok()
+                    .header("X-Transaction-ID", transactionId)
+                    .body(result);
+        } catch (Exception e) {
+            logger.error("Error fetching account projected transactions. transactionId={}, error={}", transactionId, e.getMessage(), e);
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
+                    .header("X-Transaction-ID", transactionId)
+                    .body(new ErrorResponse(HttpStatus.INTERNAL_SERVER_ERROR.value(), "ACCOUNT_LIST_ERROR", "Unexpected error", transactionId));
+        }
+    }
+
+    /**
      * Standardized error response body.
      */
     private static class ErrorResponse {

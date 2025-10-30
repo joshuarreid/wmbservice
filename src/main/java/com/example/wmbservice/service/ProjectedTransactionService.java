@@ -388,6 +388,50 @@ public class ProjectedTransactionService {
         }
     }
 
+    /**
+     * Returns personal and joint projected transactions for an account, splitting joint transactions for personal accounts.
+     */
+    public com.example.wmbservice.model.AccountProjectedTransactionList getAccountProjectedTransactionList(
+            String account,
+            String statementPeriod,
+            String category,
+            String criticality,
+            String paymentMethod,
+            String transactionId
+    ) {
+        logger.info("getAccountProjectedTransactionList entered. transactionId={}, account={}", transactionId, account);
+
+        java.util.List<com.example.wmbservice.model.ProjectedTransaction> personalTxs = new java.util.ArrayList<>();
+        java.util.List<com.example.wmbservice.model.ProjectedTransaction> jointTxs = new java.util.ArrayList<>();
+
+        String normalizedAccount = account == null ? null : account.trim().toLowerCase();
+        if ("joint".equalsIgnoreCase(normalizedAccount)) {
+            jointTxs = repository.findByFilters(statementPeriod, "joint", category, criticality, paymentMethod);
+        } else {
+            personalTxs = repository.findByFilters(statementPeriod, normalizedAccount, category, criticality, paymentMethod);
+            java.util.List<com.example.wmbservice.model.ProjectedTransaction> jointRaw = repository.findByFilters(statementPeriod, "joint", category, criticality, paymentMethod);
+            for (com.example.wmbservice.model.ProjectedTransaction jt : jointRaw) {
+                com.example.wmbservice.model.ProjectedTransaction split = new com.example.wmbservice.model.ProjectedTransaction();
+                split.setId(jt.getId());
+                split.setName("[Split] " + jt.getName());
+                split.setAccount(account);
+                split.setAmount(jt.getAmount() != null ? jt.getAmount().divide(new java.math.BigDecimal("2.00"), 2, java.math.RoundingMode.HALF_UP) : null);
+                split.setCategory(jt.getCategory());
+                split.setCriticality(jt.getCriticality());
+                split.setTransactionDate(jt.getTransactionDate());
+                split.setStatus(jt.getStatus());
+                split.setPaymentMethod(jt.getPaymentMethod());
+                split.setStatementPeriod(jt.getStatementPeriod());
+                split.setCreatedTime(jt.getCreatedTime());
+                split.setRowHash(null);
+                jointTxs.add(split);
+            }
+        }
+        com.example.wmbservice.model.ProjectedTransactionList personalList = new com.example.wmbservice.model.ProjectedTransactionList(personalTxs);
+        com.example.wmbservice.model.ProjectedTransactionList jointList = new com.example.wmbservice.model.ProjectedTransactionList(jointTxs);
+        return new com.example.wmbservice.model.AccountProjectedTransactionList(personalList, jointList);
+    }
+
     // Helper methods for safely formatting values
     private String safe(String val) { return val == null ? "" : val.trim().toLowerCase(); }
     private String safeAmount(BigDecimal val) { return val == null ? "" : val.setScale(2, RoundingMode.HALF_UP).toString(); }
