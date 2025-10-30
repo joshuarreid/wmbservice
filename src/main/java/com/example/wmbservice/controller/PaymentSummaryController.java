@@ -31,13 +31,17 @@ public class PaymentSummaryController {
     @GetMapping
     public ResponseEntity<List<PaymentSummaryResponse>> getPaymentSummary(
             @RequestParam(value = "accounts") String accounts,
+            @RequestParam(value = "statementPeriod") String statementPeriod,
             @RequestHeader(value = "X-Transaction-ID", required = false) String transactionId) {
-        logger.info("getPaymentSummary entered. transactionId={}, accounts={}", transactionId, accounts);
+        logger.info("getPaymentSummary entered. transactionId={}, statementPeriod={}, accounts={}", transactionId, statementPeriod, accounts);
+        if (statementPeriod == null || statementPeriod.isBlank()) {
+            return ResponseEntity.badRequest().body(null);
+        }
         List<String> accountList = Arrays.stream(accounts.split(","))
                 .map(String::trim)
                 .filter(s -> !s.isEmpty())
                 .collect(Collectors.toList());
-        List<PaymentSummaryResponse> summaries = paymentSummaryService.getPaymentSummary(accountList, transactionId);
+        List<PaymentSummaryResponse> summaries = paymentSummaryService.getPaymentSummary(accountList, statementPeriod, transactionId);
         return ResponseEntity.ok(summaries);
     }
 }

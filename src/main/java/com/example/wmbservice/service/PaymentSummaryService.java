@@ -25,9 +25,14 @@ public class PaymentSummaryService {
      * Returns a summary for each account, showing how much is owed on each credit card.
      * Accepts a list of accounts.
      */
-    public List<PaymentSummaryResponse> getPaymentSummary(List<String> accountList, String transactionId) {
-        logger.info("getPaymentSummary (service) entered. transactionId={}, accounts={}", transactionId, accountList);
-        List<BudgetTransaction> allTx = budgetTransactionService.getTransactions(null, null, null, null, null, transactionId).getTransactions();
+    public List<PaymentSummaryResponse> getPaymentSummary(List<String> accountList, String statementPeriod, String transactionId) {
+        logger.info("getPaymentSummary (service) entered. transactionId={}, statementPeriod={}, accounts={}", transactionId, statementPeriod, accountList);
+        if (statementPeriod == null || statementPeriod.isBlank()) {
+            throw new IllegalArgumentException("statementPeriod is required and must be in the form MONTHYYYY (e.g. OCTOBER2025)");
+        }
+        String normalizedPeriod = statementPeriod.trim().toUpperCase(Locale.ENGLISH);
+        // Fetch all transactions for the relevant period
+        List<BudgetTransaction> allTx = budgetTransactionService.getTransactions(normalizedPeriod, null, null, null, null, transactionId).getTransactions();
         List<PaymentSummaryResponse> summaries = new ArrayList<>();
         Map<String, String> normalizedAccountMap = accountList.stream()
             .filter(Objects::nonNull)
